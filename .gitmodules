@@ -1,0 +1,3 @@
+[submodule "raft"]
+	path = raft
+	url = https://github.com/canonical/raft
