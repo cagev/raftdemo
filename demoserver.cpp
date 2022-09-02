@@ -3,20 +3,38 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#
+
 extern "C" { 
 #include "raft.h"
 #include "raft/uv.h"
 } 
 
 #define N_SERVERS 3    /* Number of servers in the example cluster */
-#define APPLY_RATE 3000 /* Apply a new entry every 125 milliseconds */
+#define APPLY_RATE 1000 /* Apply a new entry every 125 milliseconds */
 
 #define Log(SERVER_ID, FORMAT) printf("%d: " FORMAT "\n", SERVER_ID)
 #define Logf(SERVER_ID, FORMAT, ...) \
     printf("%d: " FORMAT "\n", SERVER_ID, __VA_ARGS__)
 
 
+
+static unsigned int next_power_of_two(unsigned int n)
+{
+    unsigned count = 0;
+     
+    // First n in the below condition
+    // is for the case where n is 0
+    if (n && !(n & (n - 1)))
+        return n;
+     
+    while( n != 0)
+    {
+        n >>= 1;
+        count += 1;
+    }
+     
+    return 1 << count;
+}
 
 static int ensureDir(const char *dir)
 {
@@ -78,7 +96,7 @@ static int FsmSnapshot(struct raft_fsm *fsm,
                        struct raft_buffer *bufs[],
                        unsigned *n_bufs)
 {
-     printf("fsm snapshot : %lu \n", *n_bufs); 
+     printf("fsm snapshot : %u \n", *n_bufs); 
     struct Fsm *f = (struct Fsm*) fsm->data;
     *n_bufs = 1;
     *bufs = (struct raft_buffer*) raft_malloc(sizeof **bufs);
@@ -94,6 +112,17 @@ static int FsmSnapshot(struct raft_fsm *fsm,
     //*(uint64_t *)(*bufs)[0].base = f->count;
     return 0;
 }
+static int FsmSnapshotFinalize(struct raft_fsm *fsm,
+                       struct raft_buffer *bufs[],
+                       unsigned *n_bufs){
+     printf("fsm snapshot finalize : %u \n", *n_bufs); 
+     if (*n_bufs > 0 ){
+        printf("buffer length %lu\n", (*bufs)[0].len); 
+     }
+     
+
+return 0; 
+                       }
 
 static int FsmRestore(struct raft_fsm *fsm, struct raft_buffer *buf)
 {
@@ -118,7 +147,7 @@ static int FsmInit(struct raft_fsm *fsm)
     fsm->data = f;
     fsm->apply = FsmApply;
     fsm->snapshot = FsmSnapshot;
-    fsm->snapshot_finalize = NULL;
+    fsm->snapshot_finalize = FsmSnapshotFinalize;
     fsm->restore = FsmRestore;
     return 0;
 }
@@ -273,8 +302,8 @@ static int ServerInit(struct Server *s,
     }
     raft_configuration_close(&configuration);
 
-    // raft_set_snapshot_threshold(&s->raft, 64);
-    // raft_set_snapshot_trailing(&s->raft, 16);
+    raft_set_snapshot_threshold(&s->raft, 64);
+    raft_set_snapshot_trailing(&s->raft, 16);
     raft_set_pre_vote(&s->raft, true);
 
     s->transfer.data = s;
@@ -328,8 +357,10 @@ static void serverTimerCb(uv_timer_t *timer)
     char szBuf[1024] = {0}; 
     int ret = sprintf(szBuf, "message from %d index %d", s->id, user_index ++ ); 
     szBuf[ret] = 0; 
-    printf("message length is %d\n", ret); 
-    buf.len = ret +1 ;
+    //printf("message length is %d\n", ret); 
+
+    buf.len = next_power_of_two(ret);
+ 
     buf.base = raft_malloc(buf.len);
     if (buf.base == NULL) {
         Log(s->id, "serverTimerCb(): out of memory");
