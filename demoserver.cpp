@@ -126,6 +126,8 @@ return 0;
 
 static int FsmRestore(struct raft_fsm *fsm, struct raft_buffer *buf)
 {
+
+    printf("fsm restore , buffer size : %d \n", buf->len); 
     struct Fsm *f = (struct Fsm*) fsm->data;
     // if (buf->len != sizeof(uint64_t)) {
     //     return RAFT_MALFORMED;
